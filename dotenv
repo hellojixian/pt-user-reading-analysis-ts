@@ -1,5 +1,0 @@
-    SNOWFLAKE_USER=jixian
-    SNOWFLAKE_PASSWORD=xxx
-    SNOWFLAKE_ACCOUNT=pt97627.eu-west-1
-    OPENAI_API_KEY=sk-
-    OPENAI_MODEL=gpt-4o

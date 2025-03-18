@@ -5,8 +5,8 @@
   "main": "dist/run_task.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/run_task.js",
-    "dev": "ts-node src/run_task.ts"
+    "start": "node dist/run_task.js 1",
+    "dev": "ts-node src/run_task.ts 1"
   },
   "dependencies": {
     "dotenv": "^16.0.3",

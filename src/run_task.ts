@@ -23,10 +23,18 @@ async function main() {
 
             let promptReadingHistory = "";
             for (const book of books) {
-                const bookDesc = await getBookInfo(book.book_id);
-                promptReadingHistory += OPENAI_USER_READING_HISTORY_RECORD.replace("{event_time}", book.event_time)
-                    .replace("{book_title}", book.title)
-                    .replace("{book_desc}", bookDesc);
+                try {
+                    const bookDesc = await getBookInfo(book.book_id);
+                    promptReadingHistory += OPENAI_USER_READING_HISTORY_RECORD.replace("{event_time}", book.event_time)
+                        .replace("{book_title}", book.title)
+                        .replace("{book_desc}", bookDesc);
+                } catch (error) {
+                    console.warn(`Could not get description for book ${book.book_id}: ${error}`);
+                    // Continue with an empty description
+                    promptReadingHistory += OPENAI_USER_READING_HISTORY_RECORD.replace("{event_time}", book.event_time)
+                        .replace("{book_title}", book.title)
+                        .replace("{book_desc}", "No description available");
+                }
             }
 
             const bookCreationInstruction = await analyzeUserInterest(assistantId, promptReadingHistory);

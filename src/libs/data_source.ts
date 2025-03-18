@@ -2,7 +2,8 @@ import { Connection, createConnection } from 'snowflake-sdk';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
-import { OPENAI_USER_READING_HISTORY_RECORD } from './prompt_templates';
+import os from 'os';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -14,6 +15,19 @@ async function getDbConnection(): Promise<Connection> {
             account: process.env.SNOWFLAKE_ACCOUNT!,
             username: process.env.SNOWFLAKE_USER!,
             password: process.env.SNOWFLAKE_PASSWORD!,
+        });
+
+        // Establish the connection
+        await new Promise<void>((resolve, reject) => {
+            conn!.connect((err) => {
+                if (err) {
+                    console.error('Unable to connect: ', err);
+                    reject(err);
+                } else {
+                    console.log('Successfully connected to Snowflake!');
+                    resolve();
+                }
+            });
         });
     }
     return conn;
@@ -46,7 +60,7 @@ async function getUserReadBooks(userId: string, limit: number = 5): Promise<any[
             sqlText: `
                 SELECT s.EVENT_TIME, b.TITLE, b.AUTHOR, b.ISBN, b.LANGUAGE_CODE,
                        b.GENRE, b.PUBLISHER, b.WORD_COUNT, b.DEFAULT_CATEGORIES,
-                       b.PERMANENT_ID
+                       b.PERMANENT_ID as book_id
                 FROM FIVETRAN_DATABASE.AWS_GLUE_METRICS_PROD.STUDENTS_READING_SESSIONS s
                 JOIN FIVETRAN_DATABASE.AWS_GLUE_METRICS_PROD.BOOKS_LIST b
                 ON s.BOOK_PERMANENT_ID = b.PERMANENT_ID
@@ -56,7 +70,35 @@ async function getUserReadBooks(userId: string, limit: number = 5): Promise<any[
             `,
             complete: (err, stmt, rows) => {
                 if (err) reject(err);
-                else resolve((rows ?? []));
+                else {
+                    // Debug: log the first row to see its structure
+                    if (rows && rows.length > 0) {
+                        console.log("First row structure:", JSON.stringify(rows[0]));
+                    }
+
+                    // Map the rows to ensure consistent field names
+                    const books = (rows ?? []).map(row => {
+                        // Create a book object with all fields
+                        const book = {
+                            event_time: row.EVENT_TIME,
+                            title: row.TITLE,
+                            author: row.AUTHOR,
+                            isbn: row.ISBN,
+                            language_code: row.LANGUAGE_CODE,
+                            genre: row.GENRE,
+                            publisher: row.PUBLISHER,
+                            word_count: row.WORD_COUNT,
+                            default_categories: row.DEFAULT_CATEGORIES,
+                            book_id: row.BOOK_ID // Use the correct case
+                        };
+
+                        // Debug: log the book_id
+                        console.log(`Book ID for ${row.TITLE}: ${book.book_id}`);
+
+                        return book;
+                    });
+                    resolve(books);
+                }
             }
         });
     });
@@ -95,7 +137,8 @@ async function fetchAllProductionBooks(): Promise<string> {
                         book_description: row.DESCRIPTION
                     })).join('\n');
 
-                    const tempFilePath = path.join(__dirname, 'library_books.json');
+                    const tempFileName = `library-books-${crypto.randomBytes(6).toString('hex')}.json`;
+                    const tempFilePath = path.join(os.tmpdir(), tempFileName);
                     fs.writeFileSync(tempFilePath, data);
                     resolve(tempFilePath);
                 }
