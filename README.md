@@ -25,7 +25,7 @@ This project connects to a Snowflake database to retrieve user reading history, 
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/pt-user-reading-analysis-ts.git
+   git clone https://github.com/hellojixian/pt-user-reading-analysis-ts.git
    cd pt-user-reading-analysis-ts
    ```
 
