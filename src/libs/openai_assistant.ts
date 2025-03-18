@@ -94,7 +94,8 @@ async function analyzeUserInterest(assistantId: string, userData: string): Promi
 
     console.log("⏳ Running Assistant for User Interest Analysis...");
 
-    return await monitorRun(run.id, thread.id);
+    // Pass true to indicate this is an interest analysis call
+    return await monitorRun(run.id, thread.id, true);
 }
 
 async function searchBooksByInterest(assistantId: string, userData: string): Promise<any[]> {
@@ -114,10 +115,11 @@ async function searchBooksByInterest(assistantId: string, userData: string): Pro
         tool_choice: { type: "file_search" }
     });
 
-    return await monitorRun(run.id, thread.id);
+    // Pass false to indicate this is not an interest analysis call
+    return await monitorRun(run.id, thread.id, false);
 }
 
-async function monitorRun(runId: string, threadId: string): Promise<any> {
+async function monitorRun(runId: string, threadId: string, isInterestAnalysis: boolean = false): Promise<any> {
     let recommendation_summary = "";
     let recommended_books: any[] = [];
 
@@ -181,11 +183,13 @@ async function monitorRun(runId: string, threadId: string): Promise<any> {
         await new Promise(resolve => setTimeout(resolve, 2000));
     }
 
-    // If we have recommendation data from function calls, return it
-    if (recommendation_summary && recommended_books.length === 0) {
+    // If this is an interest analysis, return only the recommendation_summary string
+    if (isInterestAnalysis) {
+        console.log(`📝 Interest analysis result: ${recommendation_summary}`);
         return recommendation_summary;
     }
 
+    // For book recommendations, return the recommended_books array
     if (recommended_books.length > 0) {
         return recommended_books;
     }
@@ -205,6 +209,16 @@ async function monitorRun(runId: string, threadId: string): Promise<any> {
     try {
         if (lastMessage.content[0].type === "text") {
             const content = lastMessage.content[0].text.value;
+
+            // If this is an interest analysis, try to extract just the recommendation summary
+            if (isInterestAnalysis) {
+                // Try to extract a simple phrase or sentence
+                const lines = content.split('\n').filter(line => line.trim() !== '');
+                if (lines.length > 0) {
+                    return lines[0].trim();
+                }
+                return content.trim();
+            }
 
             // Check if this is a recommendation message
             if (content.includes("book_id") && content.includes("book_title")) {
@@ -239,7 +253,7 @@ async function monitorRun(runId: string, threadId: string): Promise<any> {
                 }
             }
 
-            // Return the text content for user interest analysis
+            // Return the text content
             return content;
         }
     } catch (error) {
