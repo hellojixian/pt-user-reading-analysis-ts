@@ -10,10 +10,18 @@ import {
     OPENAI_ANALYSIS_FUNCTION_RESULT_DESCRIPTION
 } from './prompt_templates';
 
+// Load environment variables from .env file
 dotenv.config();
 
+// Initialize OpenAI client with API key
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
+/**
+ * Creates a vector store and uploads a library data file to it.
+ *
+ * @param {string} libraryDataPath - Path to the library data file
+ * @returns {Promise<string>} A Promise that resolves to the vector store ID
+ */
 async function createVectorStoreWithFile(libraryDataPath: string): Promise<string> {
     const vectorStore = await openai.vectorStores.create({ name: "Library Vector Store" });
     const vectorStoreId = vectorStore.id;
@@ -30,6 +38,12 @@ async function createVectorStoreWithFile(libraryDataPath: string): Promise<strin
     return vectorStoreId;
 }
 
+/**
+ * Creates an OpenAI Assistant with file search capabilities and function tools.
+ *
+ * @param {string} libraryDataPath - Path to the library data file
+ * @returns {Promise<string>} A Promise that resolves to the assistant ID
+ */
 async function ensureAssistant(libraryDataPath: string): Promise<string> {
     const vectorStoreId = await createVectorStoreWithFile(libraryDataPath);
 
@@ -76,6 +90,13 @@ async function ensureAssistant(libraryDataPath: string): Promise<string> {
     return assistant.id;
 }
 
+/**
+ * Analyzes a user's reading interests based on their reading history.
+ *
+ * @param {string} assistantId - The ID of the OpenAI Assistant
+ * @param {string} userData - The user's reading history data
+ * @returns {Promise<string>} A Promise that resolves to a summary of the user's interests
+ */
 async function analyzeUserInterest(assistantId: string, userData: string): Promise<string> {
     const thread = await openai.beta.threads.create();
     console.log(`📌 Thread created with ID: ${thread.id}`);
@@ -98,6 +119,13 @@ async function analyzeUserInterest(assistantId: string, userData: string): Promi
     return await monitorRun(run.id, thread.id, true);
 }
 
+/**
+ * Searches for books that match a user's interests.
+ *
+ * @param {string} assistantId - The ID of the OpenAI Assistant
+ * @param {string} userData - The user's reading history data
+ * @returns {Promise<any[]>} A Promise that resolves to an array of recommended books
+ */
 async function searchBooksByInterest(assistantId: string, userData: string): Promise<any[]> {
     const thread = await openai.beta.threads.create();
     console.log(`📌 Thread created with ID: ${thread.id}`);
@@ -119,6 +147,14 @@ async function searchBooksByInterest(assistantId: string, userData: string): Pro
     return await monitorRun(run.id, thread.id, false);
 }
 
+/**
+ * Monitors an OpenAI Assistant run and processes the results.
+ *
+ * @param {string} runId - The ID of the run
+ * @param {string} threadId - The ID of the thread
+ * @param {boolean} isInterestAnalysis - Whether this is an interest analysis run (default: false)
+ * @returns {Promise<any>} A Promise that resolves to the run results
+ */
 async function monitorRun(runId: string, threadId: string, isInterestAnalysis: boolean = false): Promise<any> {
     let recommendation_summary = "";
     let recommended_books: any[] = [];
@@ -264,6 +300,11 @@ async function monitorRun(runId: string, threadId: string, isInterestAnalysis: b
     return lastMessage;
 }
 
+/**
+ * Deletes an OpenAI Assistant and its associated resources.
+ *
+ * @param {string} assistantId - The ID of the assistant to delete
+ */
 async function deleteAssistant(assistantId: string) {
     try {
         // Get Assistant details

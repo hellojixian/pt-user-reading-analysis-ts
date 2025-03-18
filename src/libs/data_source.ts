@@ -5,10 +5,18 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 
+// Load environment variables from .env file
 dotenv.config();
 
+// Global connection instance
 let conn: Connection | null = null;
 
+/**
+ * Establishes and returns a connection to the Snowflake database.
+ * Creates a new connection if one doesn't exist, otherwise returns the existing connection.
+ *
+ * @returns {Promise<Connection>} A Promise that resolves to a Snowflake connection
+ */
 async function getDbConnection(): Promise<Connection> {
     if (!conn) {
         conn = createConnection({
@@ -33,6 +41,13 @@ async function getDbConnection(): Promise<Connection> {
     return conn;
 }
 
+/**
+ * Retrieves a list of active users based on their reading activity.
+ *
+ * @param {number} days - Number of days to look back for activity (default: 14)
+ * @param {number} minActivityCount - Minimum number of reading sessions required (default: 5)
+ * @returns {Promise<string[]>} A Promise that resolves to an array of user IDs
+ */
 async function getActiveUsers(days: number = 14, minActivityCount: number = 5): Promise<string[]> {
     const connection = await getDbConnection();
     return new Promise((resolve, reject) => {
@@ -53,6 +68,13 @@ async function getActiveUsers(days: number = 14, minActivityCount: number = 5): 
     });
 }
 
+/**
+ * Retrieves books that a specific user has read.
+ *
+ * @param {string} userId - The ID of the user
+ * @param {number} limit - Maximum number of books to retrieve (default: 5)
+ * @returns {Promise<any[]>} A Promise that resolves to an array of book objects
+ */
 async function getUserReadBooks(userId: string, limit: number = 5): Promise<any[]> {
     const connection = await getDbConnection();
     return new Promise((resolve, reject) => {
@@ -104,6 +126,12 @@ async function getUserReadBooks(userId: string, limit: number = 5): Promise<any[
     });
 }
 
+/**
+ * Retrieves detailed information about a specific book.
+ *
+ * @param {string} bookId - The ID of the book
+ * @returns {Promise<string>} A Promise that resolves to the book's description
+ */
 async function getBookInfo(bookId: string): Promise<string> {
     const connection = await getDbConnection();
     return new Promise((resolve, reject) => {
@@ -120,6 +148,11 @@ async function getBookInfo(bookId: string): Promise<string> {
     });
 }
 
+/**
+ * Fetches all books from the production database and saves them to a temporary file.
+ *
+ * @returns {Promise<string>} A Promise that resolves to the path of the temporary file
+ */
 async function fetchAllProductionBooks(): Promise<string> {
     const connection = await getDbConnection();
     return new Promise((resolve, reject) => {
