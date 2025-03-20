@@ -1,3 +1,20 @@
+/**
+ * ========================================================================
+ * Snowflake Database Connection and Data Access Module
+ * ========================================================================
+ *
+ * This module provides functions for connecting to the Snowflake database
+ * and retrieving book and user data. It implements a connection pool pattern
+ * with a single, reusable database connection.
+ *
+ * The module handles:
+ * - Establishing and managing database connections
+ * - Retrieving active user data
+ * - Fetching users' reading history
+ * - Getting detailed book information
+ * - Exporting book data to temporary files
+ */
+
 import { Connection, createConnection } from 'snowflake-sdk';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -5,17 +22,36 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 
-// Load environment variables from .env file
+// Load environment variables from .env file (.env contains database credentials)
 dotenv.config();
 
-// Global connection instance
+// Global connection instance (singleton pattern)
 let conn: Connection | null = null;
 
 /**
  * Establishes and returns a connection to the Snowflake database.
- * Creates a new connection if one doesn't exist, otherwise returns the existing connection.
+ * Uses the singleton pattern - creates a new connection if one doesn't exist,
+ * otherwise returns the existing connection.
  *
  * @returns {Promise<Connection>} A Promise that resolves to a Snowflake connection
+ *
+ * Example:
+ * ```typescript
+ * // Get a database connection
+ * const connection = await getDbConnection();
+ *
+ * // Use the connection to execute a query
+ * connection.execute({
+ *   sqlText: "SELECT * FROM my_table LIMIT 10",
+ *   complete: (err, stmt, rows) => {
+ *     if (err) {
+ *       console.error('Error executing query:', err);
+ *     } else {
+ *       console.log('Query results:', rows);
+ *     }
+ *   }
+ * });
+ * ```
  */
 async function getDbConnection(): Promise<Connection> {
     if (!conn) {
@@ -44,9 +80,27 @@ async function getDbConnection(): Promise<Connection> {
 /**
  * Retrieves a list of active users based on their reading activity.
  *
+ * This function queries the database for users who have been active readers
+ * within a specified timeframe. It identifies users who have engaged with
+ * a minimum number of reading sessions, making them good candidates for
+ * book recommendations.
+ *
  * @param {number} days - Number of days to look back for activity (default: 14)
  * @param {number} minActivityCount - Minimum number of reading sessions required (default: 5)
  * @returns {Promise<string[]>} A Promise that resolves to an array of user IDs
+ *
+ * Example:
+ * ```typescript
+ * // Get users who have read at least 5 books in the last 7 days
+ * const activeUsers = await getActiveUsers(7, 5);
+ * console.log(`Found ${activeUsers.length} active users`);
+ *
+ * // Process each active user
+ * for (const userId of activeUsers) {
+ *   // Do something with each user ID
+ *   console.log(`Processing user: ${userId}`);
+ * }
+ * ```
  */
 async function getActiveUsers(days: number = 14, minActivityCount: number = 5): Promise<string[]> {
     const connection = await getDbConnection();
@@ -71,9 +125,32 @@ async function getActiveUsers(days: number = 14, minActivityCount: number = 5): 
 /**
  * Retrieves books that a specific user has read.
  *
+ * This function fetches a user's reading history from the database,
+ * including detailed information about each book they've read. The
+ * books are returned in reverse chronological order (most recent first).
+ *
+ * The returned book objects include comprehensive metadata such as:
+ * - Event time (when the book was read)
+ * - Title and author
+ * - ISBN and language code
+ * - Genre, publisher, and word count
+ * - Categories and permanent book ID
+ *
  * @param {string} userId - The ID of the user
  * @param {number} limit - Maximum number of books to retrieve (default: 5)
  * @returns {Promise<any[]>} A Promise that resolves to an array of book objects
+ *
+ * Example:
+ * ```typescript
+ * // Get the 10 most recent books read by a user
+ * const userId = 'user123';
+ * const recentBooks = await getUserReadBooks(userId, 10);
+ *
+ * // Display the titles of the books
+ * recentBooks.forEach((book, index) => {
+ *   console.log(`${index + 1}. ${book.title} (Read on: ${book.event_time})`);
+ * });
+ * ```
  */
 async function getUserReadBooks(userId: string, limit: number = 5): Promise<any[]> {
     const connection = await getDbConnection();
@@ -129,8 +206,24 @@ async function getUserReadBooks(userId: string, limit: number = 5): Promise<any[
 /**
  * Retrieves detailed information about a specific book.
  *
- * @param {string} bookId - The ID of the book
+ * This function queries the database for a book's description based on its
+ * permanent ID. It's used to get more comprehensive information about a book
+ * when building the reading history for recommendation processing.
+ *
+ * @param {string} bookId - The permanent ID of the book
  * @returns {Promise<string>} A Promise that resolves to the book's description
+ *
+ * Example:
+ * ```typescript
+ * // Get detailed information for a specific book
+ * try {
+ *   const bookId = '12345-1';
+ *   const bookDescription = await getBookInfo(bookId);
+ *   console.log(`Book Description: ${bookDescription.substring(0, 100)}...`);
+ * } catch (error) {
+ *   console.error(`Failed to get book info: ${error}`);
+ * }
+ * ```
  */
 async function getBookInfo(bookId: string): Promise<string> {
     const connection = await getDbConnection();
@@ -151,7 +244,33 @@ async function getBookInfo(bookId: string): Promise<string> {
 /**
  * Fetches all books from the production database and saves them to a temporary file.
  *
+ * This function is used to prepare data for the OpenAI Assistant. It:
+ * 1. Queries the database for all books
+ * 2. Formats each book as a JSON object
+ * 3. Writes the data to a temporary file with a unique name
+ * 4. Returns the path to this file
+ *
+ * The temporary file format is one book per line (JSONL format), which is
+ * well-suited for vector store indexing by the OpenAI API.
+ *
  * @returns {Promise<string>} A Promise that resolves to the path of the temporary file
+ *
+ * Example:
+ * ```typescript
+ * // Fetch all books and save to a temporary file
+ * try {
+ *   const tempFilePath = await fetchAllProductionBooks();
+ *   console.log(`Books data saved to: ${tempFilePath}`);
+ *
+ *   // Use the file for OpenAI Assistant creation
+ *   const assistantId = await ensureAssistant(tempFilePath);
+ *
+ *   // Clean up when done
+ *   fs.unlinkSync(tempFilePath);
+ * } catch (error) {
+ *   console.error(`Failed to fetch books: ${error}`);
+ * }
+ * ```
  */
 async function fetchAllProductionBooks(): Promise<string> {
     const connection = await getDbConnection();

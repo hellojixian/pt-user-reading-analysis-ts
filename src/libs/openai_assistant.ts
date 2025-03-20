@@ -1,3 +1,23 @@
+/**
+ * ========================================================================
+ * OpenAI Assistant Integration Module
+ * ========================================================================
+ *
+ * This module provides integration with OpenAI's Assistant API for book
+ * recommendation purposes. It handles:
+ * - Creating and managing OpenAI Assistants
+ * - Creating vector stores for efficient book searching
+ * - Analyzing user reading interests
+ * - Generating personalized book recommendations
+ * - Tracking token usage and costs
+ *
+ * The module implements a workflow that:
+ * 1. Creates an Assistant with a vector store of book data
+ * 2. Analyzes user reading history to determine interests
+ * 3. Uses those interests to find relevant book recommendations
+ * 4. Cleans up resources when done
+ */
+
 import { OpenAI } from 'openai';
 import dotenv from 'dotenv';
 import fs from 'fs';
@@ -11,28 +31,48 @@ import {
     OPENAI_ANALYSIS_FUNCTION_RESULT_DESCRIPTION
 } from './prompt_templates';
 
-// Load environment variables from .env file
+// Load environment variables from .env file (API keys, etc.)
 dotenv.config();
 
-// Initialize OpenAI client with API key
+/**
+ * Initialize OpenAI client with API key from environment variables
+ * The exclamation mark (!) is a non-null assertion operator for TypeScript,
+ * indicating we expect this environment variable to be defined
+ */
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 /**
  * Creates a vector store and uploads a library data file to it.
  *
+ * This function performs three main steps:
+ * 1. Creates a new vector store in OpenAI
+ * 2. Uploads the library data file to OpenAI
+ * 3. Links the uploaded file to the vector store for search capabilities
+ *
  * @param {string} libraryDataPath - Path to the library data file
  * @returns {Promise<string>} A Promise that resolves to the vector store ID
+ *
+ * Example:
+ * ```typescript
+ * // Create a vector store with book data
+ * const libraryDataPath = './data/library-catalog.json';
+ * const vectorStoreId = await createVectorStoreWithFile(libraryDataPath);
+ * console.log(`Vector store created: ${vectorStoreId}`);
+ * ```
  */
 async function createVectorStoreWithFile(libraryDataPath: string): Promise<string> {
+    // Step 1: Create a new vector store
     const vectorStore = await openai.vectorStores.create({ name: "Library Vector Store" });
     const vectorStoreId = vectorStore.id;
     console.log(`📁 Created vector store with ID: ${vectorStoreId}`);
 
+    // Step 2: Upload the library data file
     const fileData = fs.createReadStream(libraryDataPath);
     const uploadedFile = await openai.files.create({ file: fileData, purpose: "assistants" });
     const fileId = uploadedFile.id;
     console.log(`📄 Uploaded file with ID: ${fileId}`);
 
+    // Step 3: Link the file to the vector store
     await openai.vectorStores.files.create(vectorStoreId, { file_id: fileId });
     console.log(`✅ Linked file to vector store ${vectorStoreId}`);
 
@@ -42,8 +82,20 @@ async function createVectorStoreWithFile(libraryDataPath: string): Promise<strin
 /**
  * Creates an OpenAI Assistant with file search capabilities and function tools.
  *
+ * This function:
+ * 1. Creates a vector store with the library data
+ * 2. Sets up an Assistant with specific instructions
+ * 3. Configures tools for file search and book recommendations
+ *
  * @param {string} libraryDataPath - Path to the library data file
  * @returns {Promise<string>} A Promise that resolves to the assistant ID
+ *
+ * Example:
+ * ```typescript
+ * // Create an assistant with book recommendation capabilities
+ * const assistantId = await ensureAssistant('./data/books.json');
+ * console.log(`Assistant created: ${assistantId}`);
+ * ```
  */
 async function ensureAssistant(libraryDataPath: string): Promise<string> {
     const vectorStoreId = await createVectorStoreWithFile(libraryDataPath);
@@ -94,10 +146,25 @@ async function ensureAssistant(libraryDataPath: string): Promise<string> {
 /**
  * Analyzes a user's reading interests based on their reading history.
  *
+ * This function:
+ * 1. Creates a new thread for the conversation
+ * 2. Sends the user's reading history to the assistant
+ * 3. Extracts a summary of the user's reading interests
+ * 4. Tracks token usage for this operation
+ *
  * @param {string} assistantId - The ID of the OpenAI Assistant
  * @param {string} userData - The user's reading history data
  * @param {string} userId - The user ID for token tracking
  * @returns {Promise<string>} A Promise that resolves to a summary of the user's interests
+ *
+ * Example:
+ * ```typescript
+ * // Analyze a user's reading interests
+ * const userData = "Recent books: Book 1 (Fantasy), Book 2 (Science)...";
+ * const interests = await analyzeUserInterest(assistantId, userData, "user123");
+ * console.log(`User interests: ${interests}`);
+ * // Output might be: "science fiction and educational content"
+ * ```
  */
 async function analyzeUserInterest(assistantId: string, userData: string, userId: string): Promise<string> {
     const thread = await openai.beta.threads.create();
@@ -124,10 +191,35 @@ async function analyzeUserInterest(assistantId: string, userData: string, userId
 /**
  * Searches for books that match a user's interests.
  *
+ * This function:
+ * 1. Creates a new thread for the conversation
+ * 2. Sends the user's reading history to the assistant
+ * 3. Instructs the assistant to use file search to find relevant books
+ * 4. Returns structured book recommendations with reasons
+ * 5. Tracks token usage for this operation
+ *
  * @param {string} assistantId - The ID of the OpenAI Assistant
  * @param {string} userData - The user's reading history data
  * @param {string} userId - The user ID for token tracking
  * @returns {Promise<any[]>} A Promise that resolves to an array of recommended books
+ *
+ * Example:
+ * ```typescript
+ * // Get book recommendations for a user
+ * const recommendations = await searchBooksByInterest(
+ *   assistantId,
+ *   userReadingHistory,
+ *   "user123"
+ * );
+ *
+ * // Display recommendations
+ * recommendations.forEach(book => {
+ *   console.log(`Book: ${book.book_title}`);
+ *   console.log(`Reason: ${book.reason}`);
+ * });
+ * ```
+ *
+ * The returned array contains objects with book_id, book_title, and reason properties.
  */
 async function searchBooksByInterest(assistantId: string, userData: string, userId: string): Promise<any[]> {
     const thread = await openai.beta.threads.create();
@@ -153,11 +245,29 @@ async function searchBooksByInterest(assistantId: string, userData: string, user
 /**
  * Monitors an OpenAI Assistant run and processes the results.
  *
+ * This function:
+ * 1. Polls the run status until completion or an action is required
+ * 2. Handles function calls from the assistant
+ * 3. Processes book recommendations
+ * 4. Tracks token usage for cost calculation
+ * 5. Returns the appropriate results based on the operation type
+ *
  * @param {string} runId - The ID of the run
  * @param {string} threadId - The ID of the thread
  * @param {boolean} isInterestAnalysis - Whether this is an interest analysis run (default: false)
  * @param {string} userId - The user ID for token tracking
  * @returns {Promise<any>} A Promise that resolves to the run results
+ *
+ * Example:
+ * ```typescript
+ * // For interest analysis
+ * const analysisResult = await monitorRun(run.id, thread.id, true, "user123");
+ * // Returns a string like "science fiction and educational content"
+ *
+ * // For book recommendations
+ * const recommendations = await monitorRun(run.id, thread.id, false, "user123");
+ * // Returns an array of book objects with IDs, titles, and reasons
+ * ```
  */
 async function monitorRun(runId: string, threadId: string, isInterestAnalysis: boolean = false, userId: string): Promise<any> {
     let recommendation_summary = "";
@@ -353,7 +463,21 @@ async function monitorRun(runId: string, threadId: string, isInterestAnalysis: b
 /**
  * Deletes an OpenAI Assistant and its associated resources.
  *
+ * This function performs a complete cleanup by:
+ * 1. Retrieving the assistant details
+ * 2. Finding all associated vector stores
+ * 3. Deleting all files from each vector store
+ * 4. Deleting each vector store
+ * 5. Deleting the assistant itself
+ *
  * @param {string} assistantId - The ID of the assistant to delete
+ *
+ * Example:
+ * ```typescript
+ * // Clean up all resources when done
+ * await deleteAssistant(assistantId);
+ * console.log("All resources cleaned up successfully");
+ * ```
  */
 async function deleteAssistant(assistantId: string) {
     try {
