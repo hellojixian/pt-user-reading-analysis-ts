@@ -12,6 +12,7 @@ This project connects to a Snowflake database to retrieve user reading history, 
 - **Personalized Book Recommendations**: Recommends books based on user reading patterns
 - **OpenAI Integration**: Uses OpenAI's Assistant API with function calling and vector search
 - **Snowflake Database**: Retrieves user reading history and book information from Snowflake
+- **Token Usage Tracking**: Monitors OpenAI API token usage and calculates associated costs
 
 ## Installation
 
@@ -73,10 +74,13 @@ npm run dev
 ```
 pt-user-reading-analysis-ts/
 ├── src/
+│   ├── config/
+│   │   └── openai_pricing.ts   # OpenAI API pricing configuration
 │   ├── libs/
 │   │   ├── data_source.ts      # Snowflake database connection and queries
 │   │   ├── openai_assistant.ts # OpenAI Assistant API integration
-│   │   └── prompt_templates.ts # Templates for OpenAI prompts
+│   │   ├── prompt_templates.ts # Templates for OpenAI prompts
+│   │   └── token_tracker.ts    # Token usage tracking and cost calculation
 │   └── run_task.ts             # Main application entry point
 ├── docs/
 │   └── api.md                  # API documentation
@@ -93,6 +97,49 @@ pt-user-reading-analysis-ts/
 4. The user's reading history is analyzed to determine their interests and preferences.
 5. Based on this analysis, the system recommends books that match the user's interests.
 6. Results are displayed in the console, including book recommendations with reasons.
+7. At the end of processing, a summary of token usage and costs is displayed.
+
+## Token Usage Tracking
+
+This application includes a comprehensive token tracking system that monitors OpenAI API usage and calculates the associated costs. This feature helps in understanding the financial impact of using AI for book recommendations.
+
+### Token Tracking Features
+
+- **Per-User Tracking**: Monitors and attributes token usage to specific users
+- **Operation-Level Breakdown**: Separates token usage by operation type (interest analysis vs. book recommendations)
+- **Cost Calculation**: Converts token usage into financial cost based on current OpenAI pricing
+- **Detailed Reporting**: Provides a comprehensive summary report at the end of execution
+
+### Pricing Configuration
+
+The system uses a dedicated configuration file (`src/config/openai_pricing.ts`) that maintains current OpenAI API pricing information. This approach makes it easy to update prices when they change, without modifying the core application code.
+
+Current pricing for GPT-4o (as of March 2025):
+- Input tokens: $2.50 per million tokens
+- Cached input tokens: $1.25 per million tokens
+- Output tokens: $10.00 per million tokens
+
+### Sample Output
+
+```
+💰 Token Usage and Cost Summary 💰
+=====================================
+
+User ID: daad4acc-eaaa-4d69-83fc-d84f459e4ffb
+  Total Tokens: 40424
+    - Input Tokens: 39781
+    - Output Tokens: 643
+  Total Cost: $0.105883
+  Operation Breakdown:
+    - Interest Analysis: 4170 tokens ($0.012540)
+    - Book Recommendations: 36254 tokens ($0.093343)
+
+📊 TOTAL SUMMARY
+  Total Input Tokens: 39781
+  Total Output Tokens: 643
+  Total Tokens: 40424
+  TOTAL COST: $0.105883
+```
 
 ## Dependencies
 

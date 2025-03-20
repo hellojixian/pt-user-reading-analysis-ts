@@ -2,6 +2,7 @@ import { OpenAI } from 'openai';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import { tokenTracker } from './token_tracker';
 import {
     OPENAI_USER_INTEREST_ANALYSIS_PROMPT,
     OPENAI_USER_RECOOMMANDATION_PROMPT,
@@ -95,9 +96,10 @@ async function ensureAssistant(libraryDataPath: string): Promise<string> {
  *
  * @param {string} assistantId - The ID of the OpenAI Assistant
  * @param {string} userData - The user's reading history data
+ * @param {string} userId - The user ID for token tracking
  * @returns {Promise<string>} A Promise that resolves to a summary of the user's interests
  */
-async function analyzeUserInterest(assistantId: string, userData: string): Promise<string> {
+async function analyzeUserInterest(assistantId: string, userData: string, userId: string): Promise<string> {
     const thread = await openai.beta.threads.create();
     console.log(`📌 Thread created with ID: ${thread.id}`);
 
@@ -115,8 +117,8 @@ async function analyzeUserInterest(assistantId: string, userData: string): Promi
 
     console.log("⏳ Running Assistant for User Interest Analysis...");
 
-    // Pass true to indicate this is an interest analysis call
-    return await monitorRun(run.id, thread.id, true);
+    // Pass true to indicate this is an interest analysis call, along with the user ID
+    return await monitorRun(run.id, thread.id, true, userId);
 }
 
 /**
@@ -124,9 +126,10 @@ async function analyzeUserInterest(assistantId: string, userData: string): Promi
  *
  * @param {string} assistantId - The ID of the OpenAI Assistant
  * @param {string} userData - The user's reading history data
+ * @param {string} userId - The user ID for token tracking
  * @returns {Promise<any[]>} A Promise that resolves to an array of recommended books
  */
-async function searchBooksByInterest(assistantId: string, userData: string): Promise<any[]> {
+async function searchBooksByInterest(assistantId: string, userData: string, userId: string): Promise<any[]> {
     const thread = await openai.beta.threads.create();
     console.log(`📌 Thread created with ID: ${thread.id}`);
 
@@ -143,8 +146,8 @@ async function searchBooksByInterest(assistantId: string, userData: string): Pro
         tool_choice: { type: "file_search" }
     });
 
-    // Pass false to indicate this is not an interest analysis call
-    return await monitorRun(run.id, thread.id, false);
+    // Pass false to indicate this is not an interest analysis call, along with the user ID
+    return await monitorRun(run.id, thread.id, false, userId);
 }
 
 /**
@@ -153,9 +156,10 @@ async function searchBooksByInterest(assistantId: string, userData: string): Pro
  * @param {string} runId - The ID of the run
  * @param {string} threadId - The ID of the thread
  * @param {boolean} isInterestAnalysis - Whether this is an interest analysis run (default: false)
+ * @param {string} userId - The user ID for token tracking
  * @returns {Promise<any>} A Promise that resolves to the run results
  */
-async function monitorRun(runId: string, threadId: string, isInterestAnalysis: boolean = false): Promise<any> {
+async function monitorRun(runId: string, threadId: string, isInterestAnalysis: boolean = false, userId: string): Promise<any> {
     let recommendation_summary = "";
     let recommended_books: any[] = [];
 
@@ -165,6 +169,52 @@ async function monitorRun(runId: string, threadId: string, isInterestAnalysis: b
         console.log(`🔄 Status: ${runStatus.status}`);
 
         if (runStatus.status === "completed") {
+            // Track token usage when the run completes
+            if (runStatus.usage) {
+                const operation = isInterestAnalysis ? "Interest Analysis" : "Book Recommendations";
+
+                tokenTracker.addUsage(userId, {
+                    prompt_tokens: runStatus.usage.prompt_tokens || 0,
+                    completion_tokens: runStatus.usage.completion_tokens || 0,
+                    total_tokens: runStatus.usage.total_tokens || 0,
+                    operation: operation,
+                    cached: false // Assume no cached tokens by default
+                });
+
+                console.log(`📊 Tracked ${runStatus.usage.total_tokens} tokens for ${operation} (User: ${userId})`);
+            } else {
+                console.warn(`⚠️ No usage data available for run ${runId}`);
+
+                // Estimate token usage based on message length if usage data is not available
+                const messages = await openai.beta.threads.messages.list(threadId);
+                let promptTokenEstimate = 0;
+                let completionTokenEstimate = 0;
+
+                messages.data.forEach(msg => {
+                    // Very rough estimation: 1 token ≈ 4 characters
+                    const textContent = msg.content.find(c => c.type === 'text')?.text.value || '';
+                    const tokenEstimate = Math.ceil(textContent.length / 4);
+
+                    if (msg.role === 'user') {
+                        promptTokenEstimate += tokenEstimate;
+                    } else {
+                        completionTokenEstimate += tokenEstimate;
+                    }
+                });
+
+                const totalTokenEstimate = promptTokenEstimate + completionTokenEstimate;
+                const operation = isInterestAnalysis ? "Interest Analysis (Est.)" : "Book Recommendations (Est.)";
+
+                tokenTracker.addUsage(userId, {
+                    prompt_tokens: promptTokenEstimate,
+                    completion_tokens: completionTokenEstimate,
+                    total_tokens: totalTokenEstimate,
+                    operation: operation,
+                    cached: false
+                });
+
+                console.log(`📊 Estimated ${totalTokenEstimate} tokens for ${operation} (User: ${userId})`);
+            }
             break;
         } else if (runStatus.status === "failed" || runStatus.status === "cancelled") {
             throw new Error(`Assistant run failed with status: ${runStatus.status}`);
@@ -344,4 +394,4 @@ async function deleteAssistant(assistantId: string) {
     }
 }
 
-export { ensureAssistant, analyzeUserInterest, searchBooksByInterest, deleteAssistant };
+export { ensureAssistant, analyzeUserInterest, searchBooksByInterest, deleteAssistant, tokenTracker };

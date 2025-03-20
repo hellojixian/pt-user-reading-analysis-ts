@@ -1,5 +1,5 @@
 import { fetchAllProductionBooks, getActiveUsers, getUserReadBooks, getBookInfo } from "./libs/data_source";
-import { ensureAssistant, analyzeUserInterest, searchBooksByInterest, deleteAssistant } from "./libs/openai_assistant";
+import { ensureAssistant, analyzeUserInterest, searchBooksByInterest, deleteAssistant, tokenTracker } from "./libs/openai_assistant";
 import { OPENAI_USER_READING_HISTORY_RECORD, DEBUG_OUTPUT_TEMPLATE } from "./libs/prompt_templates";
 import fs from "fs";
 
@@ -28,47 +28,53 @@ async function main() {
         // Get active users who have been reading books
         const users = await getActiveUsers(14, 5);
 
-        // Process each user up to the specified limit
-        for (let i = 0; i < Math.min(users.length, numberOfUsers); i++) {
-            const userId = users[i];
+    // Process each user up to the specified limit
+    for (let i = 0; i < Math.min(users.length, numberOfUsers); i++) {
+        const userId = users[i];
+        console.log(`\n👤 Processing user: ${userId}`);
 
-            // Get the books this user has read
-            const books = await getUserReadBooks(userId);
-            console.log(`User ${userId} has read ${books.length} books:`);
+        // Get the books this user has read
+        const books = await getUserReadBooks(userId);
+        console.log(`User ${userId} has read ${books.length} books:`);
 
-            // Build the reading history prompt by combining all books
-            let promptReadingHistory = "";
-            for (const book of books) {
-                try {
-                    const bookDesc = await getBookInfo(book.book_id);
-                    promptReadingHistory += OPENAI_USER_READING_HISTORY_RECORD.replace("{event_time}", book.event_time)
-                        .replace("{book_title}", book.title)
-                        .replace("{book_desc}", bookDesc);
-                } catch (error) {
-                    console.warn(`Could not get description for book ${book.book_id}: ${error}`);
-                    // Continue with an empty description
-                    promptReadingHistory += OPENAI_USER_READING_HISTORY_RECORD.replace("{event_time}", book.event_time)
-                        .replace("{book_title}", book.title)
-                        .replace("{book_desc}", "No description available");
-                }
-            }
-
-            // Analyze the user's reading interests
-            const bookCreationInstruction = await analyzeUserInterest(assistantId, promptReadingHistory);
-            console.log(DEBUG_OUTPUT_TEMPLATE.replace("{user_id}", userId).replace("{book_creation_instruction}", bookCreationInstruction));
-
-            // Get book recommendations based on the user's interests
-            const recommendations = await searchBooksByInterest(assistantId, promptReadingHistory);
-            console.log("\n💡 User may like these books:");
-            for (const book of recommendations) {
-                console.log(`- https://app.pickatale.com/library/book/${book.book_id}\n  Title: ${book.book_title}\n  Reason: ${book.reason}\n`);
+        // Build the reading history prompt by combining all books
+        let promptReadingHistory = "";
+        for (const book of books) {
+            try {
+                const bookDesc = await getBookInfo(book.book_id);
+                promptReadingHistory += OPENAI_USER_READING_HISTORY_RECORD.replace("{event_time}", book.event_time)
+                    .replace("{book_title}", book.title)
+                    .replace("{book_desc}", bookDesc);
+            } catch (error) {
+                console.warn(`Could not get description for book ${book.book_id}: ${error}`);
+                // Continue with an empty description
+                promptReadingHistory += OPENAI_USER_READING_HISTORY_RECORD.replace("{event_time}", book.event_time)
+                    .replace("{book_title}", book.title)
+                    .replace("{book_desc}", "No description available");
             }
         }
-    } finally {
-        // Clean up resources
-        console.log("\n🧹 Cleaning up...");
-        await deleteAssistant(assistantId);
+
+        // Analyze the user's reading interests
+        console.log(`\n📖 Analyzing reading interests for user ${userId}...`);
+        const bookCreationInstruction = await analyzeUserInterest(assistantId, promptReadingHistory, userId);
+        console.log(DEBUG_OUTPUT_TEMPLATE.replace("{user_id}", userId).replace("{book_creation_instruction}", bookCreationInstruction));
+
+        // Get book recommendations based on the user's interests
+        console.log(`\n🔍 Finding book recommendations for user ${userId}...`);
+        const recommendations = await searchBooksByInterest(assistantId, promptReadingHistory, userId);
+        console.log("\n💡 User may like these books:");
+        for (const book of recommendations) {
+            console.log(`- https://app.pickatale.com/library/book/${book.book_id}\n  Title: ${book.book_title}\n  Reason: ${book.reason}\n`);
+        }
     }
+} finally {
+    // Clean up resources
+    console.log("\n🧹 Cleaning up...");
+    await deleteAssistant(assistantId);
+
+    // Display token usage and cost summary
+    tokenTracker.printSummary();
+}
 }
 
 main().catch(console.error);
